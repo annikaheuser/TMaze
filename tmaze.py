@@ -13,7 +13,7 @@ class tmaze: #TODO: think of better name
         self.WORK_PATH = WORK_PATH
         self.scorer = scorer
         self.nlp = spacy.load(spacy_pipeline)
-        self.lang = spacy_pipeline.split("_")[0]
+        self.lang = spacy_pipeline.split("_")[0] #still need this for get_tag
         self.pickle_dict = pickle_dict
         if "freq_dict" in pickle_dict:
             with open(pickle_dict["freq_dict"], "rb") as f:
@@ -96,7 +96,7 @@ class tmaze: #TODO: think of better name
             if type(distractors[i]) == tuple:
                 dist,tag = distractors[i]
                 tagged = True
-            else:
+            else: #can't be a set because we need the indices to correspond to their plls
                 dist = distractors[i]
             if dist_pll < best_so_far[0][0]: #replace a distractor in best_so_far
                 if tagged:
@@ -122,6 +122,7 @@ class tmaze: #TODO: think of better name
         #English
         mean = 7.26
         std = 2.28
+        #TODO: add these to lang_spec class
         ppf = norm(loc=mean,scale=std).cdf(word_len)
         cdf_incr = cdf_range/2
         ppf_range = [ppf-cdf_incr, ppf+cdf_incr]
@@ -297,6 +298,7 @@ class tmaze: #TODO: think of better name
         best_n = len(best)
         ranking = best_n
         word = sent[ind]
+        #get rid of this is next iteration
         replaced_tag = self.get_tag(word,ind,sent,True)
         for i in range(best_n):
             if len(best[i]) == 3:
@@ -394,12 +396,15 @@ class tmaze: #TODO: think of better name
                     dist_temp+=self.freq_dict[freq_key1]
             #only keep potential distractors in length range
             #print(f"Length of dist_temp that we need to iterate through: {len(dist_temp)}")
-            dist_temp = [dist for dist in dist_temp if len_range[0]<=len(dist)<=len_range[1] and not dist[0].isdigit()]
+            #dist_temp = [dist for dist in dist_temp if len_range[0]<=len(dist)<=len_range[1] and not dist[0].isdigit()]
+            #already check for numbers in lang_spec code
+            dist_temp = [dist for dist in dist_temp if len_range[0]<=len(dist)<=len_range[1]]
             #use a set to check that we haven't already evaluated these distractors
             #should prevent any other weird distractors we haven't already come across that are related to "00,00" and "00h"
-            dont_eval|=evaluated
-            new_dists = self.pos_shennanigans(set(dist_temp).difference(dont_eval),ind,sent,tagged,compare_tag,just_preceding) #could just check in here
-            #check that the capitalized version of the distractor hasn't already been evaluated
+            #dont_eval|=evaluated
+            #new_dists = self.pos_shennanigans(set(dist_temp).difference(dont_eval),ind,sent,tagged,compare_tag,just_preceding) #could just check in here
+            #check that the capitalized version of the distractor hasn't already been evaluated - not relevant anymore
+            new_dists = list(set(dist_temp).difference(evaluated))
             if len(new_dists): #make sure it's not passing an empty list
                 self.add_to_distractor_dict(word,new_dists,self.dists_dict)
                 if len(new_dists)+num_dist > num_eval: #so as not to evaluate too many in case there are a lot of well-matched distractors
