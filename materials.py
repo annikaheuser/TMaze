@@ -5,7 +5,7 @@ import os
 import wordfreq
 
 class materials:
-    def __init__(self,items,delimiter,pickle_files,WORK_PATH,lang):
+    def __init__(self,items,delimiter,WORK_PATH,lang,pickle_files=None,matching_distractors=False):
         '''
         items = list of strings, of the form:
         d;01;Die Mutter von Paula und die Schwester...
@@ -21,13 +21,14 @@ class materials:
         '''
         self.cond_dict = {}
         self.word_info = {}
+        self.num_item_pairs = {}
         #Can consider creating a specific materials folder
         self.WORK_PATH = WORK_PATH
         self.pickle_files = pickle_files
         self.lang_code = lang #might want to inherit this
         try:
             use_pkls,user_msg,pkl_paths = self.evaluate_pickle_situation()
-        except LookupError as err:
+        except LookupError as err: 
             print(err.args[0])
             raise LookupError
         if use_pkls:
@@ -40,22 +41,26 @@ class materials:
             print(user_msg)
             for item in items: 
                 cond,ind,sent = item.split(delimiter)
+                sent = sent[:-1] #get rid of \n
                 try:
                     self.add_word_info(sent)
                 except LookupError as err:
                     print(err.args[0])
                     print(f"Consider checking sentence {cond},{ind} for typos, not adding this sentence to experimental data.")
                     continue
-                self.cond_dict.setdefault(cond,[]).append(sent[:-1]) #get rid of \n
-            with open(pkl_paths[0], "wb") as f:
-                pickle.dump(self.cond_dict,f)
-            with open(pkl_paths[1], "wb") as f:
-                pickle.dump(self.word_info,f)
+                self.cond_dict.setdefault(cond,[]).append(sent) 
+                self.num_item_pairs.setdefault(ind,{})[cond] = sent
+            if pkl_paths:
+                with open(pkl_paths[0], "wb") as f:
+                    pickle.dump(self.cond_dict,f)
+                with open(pkl_paths[1], "wb") as f:
+                    pickle.dump(self.word_info,f)
 
     def add_word_info(self,sent):
         for word in sent.split():
             punct = False
-            formatted_word = word.lower()
+            #formatted_word = word.lower()
+            formatted_word = word
             if formatted_word[-1] in string.punctuation:
                 formatted_word = formatted_word[:-1]
                 punct = True
@@ -83,15 +88,23 @@ class materials:
         return {"exp": exp_sents, "filler": filler_sents}
     
     def check_for_pickle_file(self,key):
-        if key not in self.pickle_files:
-            raise LookupError(f"Missing key \"{key}\" in parameter \"pickle_files\"")
-        file_path = f'{self.WORK_PATH}/{self.pickle_files[key]}'
-        if os.path.isfile(file_path):
-            if os.stat(file_path).st_size != 0:
-                return True,file_path
+        #if key not in self.pickle_files:
+            #raise LookupError(f"Missing key \"{key}\" in parameter \"pickle_files\"")
+            #print(f"Missing key \"{key}\" in parameter \"pickle_files\"")
+            #return False,None 
+            #consider allowing a user to save just one
+        if key in self.pickle_files:
+            file_path = f'{self.WORK_PATH}/{self.pickle_files[key]}'
+            if os.path.isfile(file_path):
+                if os.stat(file_path).st_size != 0:
+                    return True,file_path
         return False,file_path
     
     def evaluate_pickle_situation(self):
+        if not self.pickle_files:
+            user_msg = "Creating dictionaries from the list of sentences.\n"
+            user_msg+="These won't be saved as pkl files because no file paths were provided. "
+            return False,user_msg,None
         keys = ["cond_dict", "word_info"]
         exist = []
         file_paths = []

@@ -89,6 +89,7 @@ class tmaze: #TODO: think of better name
                 dist_sents+=[self.create_sent(ind,dist[0],sent,just_preceding)]
             else:
                 dist_sents+=[self.create_sent(ind,dist,sent,just_preceding)]
+        
         sent_plls = self.scorer.score_sentences(dist_sents)
         for i in range(len(distractors)):
             tagged = False
@@ -106,6 +107,27 @@ class tmaze: #TODO: think of better name
                 best_so_far = sorted(best_so_far,reverse=True) #in order of worst to best
                 #PLL scores are negative and the lower the PLL the better the distractor 
                 #so highest to lowest (i.e. reversed) = worst to best ordering
+            evaluated.add(dist)
+        return best_so_far,evaluated
+
+    def eval_over_two_sents(self,ind,distractors,sents,best_so_far,just_preceding=True):
+        evaluated = set()
+        #can definitely be smarter about this - make a functon after getting everything to work
+        dist_sents1 = []
+        dist_sents2 = []
+        sent1,sent2 = sents
+        for dist in distractors:
+            dist_sents1+=[self.create_sent(ind,dist,sent1,just_preceding)]
+            dist_sents2+=[self.create_sent(ind,dist,sent2,just_preceding)]
+        #dist_sents get proper punctuation
+        sent_plls1 = self.scorer.score_sentences(dist_sents1)
+        sent_plls2 = self.scorer.score_sentences(dist_sents2)
+        for i in range(len(distractors)):
+            dist_pll = (sent_plls1[i]+sent_plls2[i])/2
+            dist =  distractors[i]
+            if dist_pll < best_so_far[0][0]: #replace a distractor in best_so_far
+                best_so_far[0] = (dist_pll, dist)
+                best_so_far = sorted(best_so_far,reverse=True)
             evaluated.add(dist)
         return best_so_far,evaluated
 
@@ -252,9 +274,10 @@ class tmaze: #TODO: think of better name
         return rating
 
     def check_if_already_rated(self,dist_df,dist,ind,sent_ind,filler):
+        print(dist_df)
         rating = None
         #look for rows with same ind, sent_ind, and filler columns
-        already_rated = dist_df.loc[(dist_df["Sent Index"] == sent_ind) & (dist_df["Index"] == ind) & (dist_df["Filler"] == filler)]
+        already_rated = dist_df.loc[(dist_df["Sent_Index"] == sent_ind) & (dist_df["Index"] == ind) & (dist_df["Filler"] == filler)]
         if already_rated is not None:
             if dist in already_rated.Distractor.values:
                 rating = already_rated[already_rated["Distractor"] == dist]["Rating"].values[0]
@@ -267,7 +290,7 @@ class tmaze: #TODO: think of better name
         return rating
     
     def save_top_distractors(self,best,ind, sent, sent_ind, num_eval, filler, eval_time, rate=True, dist_df=None,dist_csv=None,save_csv=False,
-                         just_preceding=True, dists_dict_file="PotentialDistractors.pkl"):
+                         just_preceding=True, dists_dict_file="PotentialDistractors.pkl",matching_dist=False):
         '''Save the best distractors that we found during evaluation in a dataframe and maybe also a csv
 
         Parameters:
@@ -290,16 +313,26 @@ class tmaze: #TODO: think of better name
         '''
         already_rated = None
         if not dist_csv:
-            if dist_df is None:
+            if not isinstance(dist_df,pd.DataFrame):
+            #if not dist_df: #original
                 dist_df = pd.DataFrame(columns= ["Distractor","Index", "POS", "Sent_Index", "Filler", "Replaced_Word", "Replaced_POS", "PLL",
                                             "PLL_norm", "Number_Evaluated", "Best_N", "Ranking", "Rating","Evaluation_Time"])
         else:
             dist_df = pd.read_csv(f"{self.WORK_PATH}/{dist_csv}",index_col=0)
         best_n = len(best)
         ranking = best_n
-        word = sent[ind]
-        #get rid of this is next iteration
-        replaced_tag = self.get_tag(word,ind,sent,True)
+        if isinstance(matching_dist,list):
+            word1,word2 = matching_dist #assuming 2!
+            word = f"{word1}/{word2}"
+            replaced_tag = "N/A"
+        elif matching_dist:
+            word = sent[0][ind]
+            replaced_tag = None
+            #could just provide the first sentence though not using POS for anything
+        else:
+            word = sent[ind]
+            #get rid of this is next iteration
+            replaced_tag = self.get_tag(word,ind,sent,True)
         for i in range(best_n):
             if len(best[i]) == 3:
                 pll,dist,tag = best[i]
@@ -321,14 +354,15 @@ class tmaze: #TODO: think of better name
             elif isinstance(save_csv, str):
                 dist_df.to_csv(f"{self.WORK_PATH}/{save_csv}")
             else:
-                print(f"Invalid parameter type entered for save_csv. Saved to default path:{WORK_PATH}/DistractorRecord.csv")
+                print(f"Invalid parameter type entered for save_csv. Saved to default path:{self.WORK_PATH}/DistractorRecord.csv")
                 dist_df.to_csv(f"{self.WORK_PATH}/DistractorRecord.csv")
         #Save the distractors dictionary to which we've added new distractors 
         file_to_write = open(self.pickle_dict['dists_dict'], "wb")
         pickle.dump(self.dists_dict, file_to_write)
         return dist_df
     def batch_eval(self,ind,sent,sent_ind,num_eval,best_n,
-               tagged=True,use_tag=False,filler=False,just_preceding=True,rate=True,dist_df=None,dist_csv=None,save_csv=False,verbose=False):
+               tagged=True,use_tag=False,filler=False,just_preceding=True,rate=True,
+               dist_df=None,dist_csv=None,save_csv=False,verbose=False,matching_dist = False):
         ''' Evaluates specified number of appropriately matched distractor words 
             and saves the least probable of those distractors in the context of the orginal sentence 
             because they are the most likely to be the most obvious distractors to a participant
@@ -355,20 +389,38 @@ class tmaze: #TODO: think of better name
         start_time = time.time()
         #initializtion 
         evaluated = set()
-        word = sent[ind].lower()
-        if word[-1] in string.punctuation: 
-            word = word[:-1]
+        #num_dist = 0
+        if isinstance(matching_dist,list):
+            word1,word2 = matching_dist #assuming 2!
+            if word1[-1] in string.punctuation: #should then be the same for word2
+                word1 = word1[:-1]
+            if word2[-1] in string.punctuation:
+                word2 = word2[:-1]
+            word = f"{word1}/{word2}"
+            evaluated|=set(matching_dist)
+        else:
+            if matching_dist:
+                word = sent[0][ind] #lower isn't necessary
+            else:
+                word = sent[ind]
+            if word[-1] in string.punctuation: 
+                word = word[:-1]
+            evaluated.add(word)
         if use_tag:
             tag = self.get_tag(word,ind,sent,just_preceding)
             print(f"Word: {word}, Tag: {tag}")
             compare_tag = tag
         else:
             compare_tag = None
-        evaluated.add(word)
-        dont_eval = self.nonwords_set.copy() #to prevent mutation - necessary?
-        target_len = self.word_info[word]["len"]
-        target_freq = self.word_info[word]["freq"]
+        #dont_eval = self.nonwords_set.copy() #to prevent mutation - necessary?
+        if isinstance(matching_dist,list):
+            target_len = (self.word_info[word1]["len"]+self.word_info[word2]["len"])/2
+            target_freq = (self.word_info[word1]["freq"]+self.word_info[word2]["freq"])/2
+        else:
+            target_len = self.word_info[word]["len"]
+            target_freq = self.word_info[word]["freq"]
         #print(target_freq)
+        #print(target_len)
         targets = (target_len,target_freq)
         len_range = self.get_len_range(target_len)
         temp_freqs = [target_freq, target_freq]
@@ -378,8 +430,11 @@ class tmaze: #TODO: think of better name
         finished_bin = True
         new_dists,num_dist = self.check_for_potential_distractors(word,num_eval) #has to do with this???
         if new_dists:
-            #best_so_far,just_evaluated = eval_best_long(ind,new_dists,sent,scorer,best_so_far,tagged,just_preceding)
-            best_so_far,just_evaluated = self.eval_best(ind,new_dists,sent,best_so_far,just_preceding)
+            if isinstance(matching_dist,list) or not matching_dist:
+                #best_so_far,just_evaluated = eval_best_long(ind,new_dists,sent,scorer,best_so_far,tagged,just_preceding)
+                best_so_far,just_evaluated = self.eval_best(ind,new_dists,sent,best_so_far,just_preceding)
+            else:
+                best_so_far,just_evaluated = self.eval_over_two_sents(ind,new_dists,sent,best_so_far,just_preceding)
             evaluated|=just_evaluated
         while num_dist < num_eval:
             #collect potential distractors based on frequency
@@ -407,18 +462,24 @@ class tmaze: #TODO: think of better name
             new_dists = list(set(dist_temp).difference(evaluated))
             if len(new_dists): #make sure it's not passing an empty list
                 self.add_to_distractor_dict(word,new_dists,self.dists_dict)
-                if len(new_dists)+num_dist > num_eval: #so as not to evaluate too many in case there are a lot of well-matched distractors
-                    #best_so_far,just_evaluated = eval_best_long(ind,new_dists[:num_eval-num_dist],sent,scorer,best_so_far,tagged,just_preceding)
-                    best_so_far,just_evaluated = self.eval_best(ind,new_dists[:num_eval-num_dist],sent,best_so_far,just_preceding)
+                if len(new_dists)+num_dist > num_eval:#so as not to evaluate too many in case there are a lot of well-matched distractors
+                    if isinstance(matching_dist,list) or not matching_dist:
+                        #best_so_far,just_evaluated = eval_best_long(ind,new_dists,sent,scorer,best_so_far,tagged,just_preceding)
+                        best_so_far,just_evaluated = self.eval_best(ind,new_dists[:num_eval-num_dist],sent,best_so_far,just_preceding)
+                    else:
+                        best_so_far,just_evaluated = self.eval_over_two_sents(ind,new_dists[:num_eval-num_dist],sent,best_so_far,just_preceding)
                     break
-                #best_so_far,just_evaluated = eval_best_long(ind,new_dists,sent,scorer,best_so_far,tagged,just_preceding)
-                best_so_far,just_evaluated = self.eval_best(ind,new_dists,sent,best_so_far,just_preceding)
+                if isinstance(matching_dist,list) or not matching_dist:
+                    #best_so_far,just_evaluated = eval_best_long(ind,new_dists,sent,scorer,best_so_far,tagged,just_preceding)
+                    best_so_far,just_evaluated = self.eval_best(ind,new_dists,sent,best_so_far,just_preceding)
+                else:
+                    best_so_far,just_evaluated = self.eval_over_two_sents(ind,new_dists,sent,best_so_far,just_preceding)
                 evaluated|=just_evaluated #evaluated will always have 1 more than the actual number evaluated because the original word is added
                 num_dist+=len(new_dists)
                 if verbose:
                     print(f"new_dists: {new_dists}")
                     print(f"dist_temp: {dist_temp}")
-                    print(f"dont_eval: {dont_eval}")
+                    #print(f"dont_eval: {dont_eval}")
                     print(f"best_so_far: {best_so_far}")
                     print(f"evaluated: {evaluated}")
             #may need to consider longer and more/less frequent words in order to evaluate enough distractors
@@ -427,7 +488,7 @@ class tmaze: #TODO: think of better name
         if verbose:
             print(f"Time to evaluate >{num_eval} distractors: {eval_time}")
             print(f"Final parameter settings: {params[0]} {params[1]}")
-        return self.save_top_distractors(best_so_far,ind,sent,sent_ind,num_eval,filler,eval_time,rate,dist_df,dist_csv,save_csv,just_preceding)
+        return self.save_top_distractors(best_so_far,ind,sent,sent_ind,num_eval,filler,eval_time,rate,dist_df,dist_csv,save_csv,just_preceding,matching_dist=matching_dist)
 
     def check_for_potential_distractors(self,word_to_replace,num_eval):
         if word_to_replace in self.dists_dict:
@@ -491,7 +552,7 @@ class tmaze: #TODO: think of better name
         return dist_df
 
     def compare_batches(self,batches,sent,sent_ind,best_n,start_ind=1,end_ind=None,tagged=True,use_tag=False,
-                    filler=False,just_preceding=True,rate=True,dist_df=None,dist_csv=None,save_csv=True):
+                    filler=False,just_preceding=True,rate=True,dist_df=None,dist_csv=None,save_csv=True,matching_dist=False):
         '''
         Collects data of distractors from multiple rounds of evaluating different numbers of distractors
         for all the words in the passed sentence
@@ -511,7 +572,9 @@ class tmaze: #TODO: think of better name
 
         Returns a pandas DataFrame with distractor data for the entire sentence (or for words from start_ind to end_ind)
         '''
-        if not end_ind:
+        if matching_dist:
+            end_ind = len(sent[0])
+        elif not end_ind:
             end_ind = len(sent)
         elif start_ind < 0 or end_ind < start_ind or end_ind > len(sent):
             raise ValueError("Please correct start_ind and/or end_ind.")
@@ -531,10 +594,10 @@ class tmaze: #TODO: think of better name
                     else:
                         save = True
                 if first:
-                    temp_df = self.batch_eval(ind,sent,sent_ind,num_eval,best_n,tagged,use_tag,filler,just_preceding,rate,dist_df,dist_csv,save)
+                    temp_df = self.batch_eval(ind,sent,sent_ind,num_eval,best_n,tagged,use_tag,filler,just_preceding,rate,dist_df,dist_csv,save,matching_dist=matching_dist)
                     first = False
                 else:
-                    temp_df = self.batch_eval(ind,sent,sent_ind,num_eval,best_n,tagged,use_tag,filler,just_preceding,rate,temp_df,save_csv=save) 
+                    temp_df = self.batch_eval(ind,sent,sent_ind,num_eval,best_n,tagged,use_tag,filler,just_preceding,rate,temp_df,save_csv=save,matching_dist=matching_dist) 
                 round+=1
         return temp_df
 
