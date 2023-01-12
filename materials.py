@@ -37,6 +37,8 @@ class materials:
                 self.cond_dict = pickle.load(f)
             with open(pkl_paths[1],"rb") as f:
                 self.word_info = pickle.load(f)
+            with open(pkl_paths[2], "rb") as f:
+                self.num_item_pairs = pickle.load(f)
         else:
             print(user_msg)
             for item in items: 
@@ -55,6 +57,8 @@ class materials:
                     pickle.dump(self.cond_dict,f)
                 with open(pkl_paths[1], "wb") as f:
                     pickle.dump(self.word_info,f)
+                with open(pkl_paths[2], "wb") as f:
+                    pickle.dump(self.num_item_pairs,f)
 
     def add_word_info(self,sent):
         for word in sent.split():
@@ -105,7 +109,7 @@ class materials:
             user_msg = "Creating dictionaries from the list of sentences.\n"
             user_msg+="These won't be saved as pkl files because no file paths were provided. "
             return False,user_msg,None
-        keys = ["cond_dict", "word_info"]
+        keys = ["cond_dict", "word_info","item_pairs"]
         exist = []
         file_paths = []
         for key in keys:
@@ -113,7 +117,7 @@ class materials:
             exist.append(exists_bool) 
             file_paths.append(file_path)
         if all(exist):
-            user_msg = "Both pickle files already exist, loading existing pickles as opposed to creating new ones."
+            user_msg = "All pickle files already exist, loading existing pickles as opposed to creating new ones."
             user_msg += "\nIf you want these files overwritten, please delete one or both of them from the directory."
             return True,user_msg,file_paths
         else:

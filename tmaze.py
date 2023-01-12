@@ -141,9 +141,11 @@ class tmaze: #TODO: think of better name
         #German
         #mean = 7.94 
         #std = 2.24
+        #min_word_len = 2
         #English
         mean = 7.26
         std = 2.28
+        min_word_len = 1 #unnecessary
         #TODO: add these to lang_spec class
         ppf = norm(loc=mean,scale=std).cdf(word_len)
         cdf_incr = cdf_range/2
@@ -156,8 +158,9 @@ class tmaze: #TODO: think of better name
         #check if hitting upper limit
         if ppf_range[1] > 0.99: 
             ppf_range[1] = 0.99
-        lower_zscore = int(norm(loc=mean,scale=std).ppf(ppf_range[0]))
-        return [lower_zscore if lower_zscore >= 2 else 2, int(norm(loc=mean,scale=std).ppf(ppf_range[1]))]
+        #lower_zscore = int(norm(loc=mean,scale=std).ppf(ppf_range[0]))
+        #return [lower_zscore if lower_zscore >= min_word_len else min_word_len, int(norm(loc=mean,scale=std).ppf(ppf_range[1]))]
+        return [int(norm(loc=mean,scale=std).ppf(ppf_range[0])),int(norm(loc=mean,scale=std).ppf(ppf_range[1]))]
 
     def get_tag(self,dist,ind,sent,just_preceding):
         '''
@@ -245,7 +248,7 @@ class tmaze: #TODO: think of better name
                 if new_params[1] < 0.97: #can't increase above 1 
                     new_params[1]+=0.02 
                 target_len,target_freq = targets
-                len_range = self.get_len_range(target_len,new_params[1])
+                #len_range = self.get_len_range(target_len,new_params[1])
                 #to get longer or shorter words we didn't score last time
                 new_tfs = [target_freq, target_freq]
         return new_params,new_tfs
@@ -483,7 +486,9 @@ class tmaze: #TODO: think of better name
                     print(f"best_so_far: {best_so_far}")
                     print(f"evaluated: {evaluated}")
             #may need to consider longer and more/less frequent words in order to evaluate enough distractors
-            params,temp_freqs = self.adjust_params(params,temp_freqs,targets,finished_bin) 
+            params,temp_freqs = self.adjust_params(params,temp_freqs,targets,finished_bin)
+            len_range = self.get_len_range(target_len,params[1])
+
         eval_time = time.time()-start_time
         if verbose:
             print(f"Time to evaluate >{num_eval} distractors: {eval_time}")

@@ -52,7 +52,7 @@ class lang_spec:
             if self.lang in self.already_tested:
                 print(f"Loading freq_bins from pkl used by developers for {self.lang}.")
                 #should be in the folder with this class
-                with open(os.path.join(self.__location__, f'freq_bins_{self.lang}.pkl'),'rb') as f:
+                with open(os.path.join(self.__location__, f'freq_bins_{self.lang}_ensemble.pkl'),'rb') as f:
                     self.freq_bins = pickle.load(f)
             elif self.lang in self.wordfreq_supported:
                 if self.capitalize and self.nlp_pipeline:
@@ -151,29 +151,29 @@ class lang_spec:
 
     def capitalization_en_spec(self,word,matches=None,tag=None):
          #all are also actual words but much less common than the names
-        names_to_capitalize = ["john","mike","lee","max","harry","sally","tony","jimmy","roger","josh","johnny","maria",
+        names_to_capitalize = {"john","mike","lee","max","harry","sally","tony","jimmy","roger","josh","johnny","maria",
                 "rick","ian","graham","ted","cooper","khan","terry","nelson","mama","bobby","batman","sid","james",
-                "welsh","rogers","yang","molly","belle","sims","parsons","lea","sheila","raj"]
+                "welsh","rogers","yang","molly","belle","sims","parsons","lea","sheila","raj","oscars","modi", "potter",
+                "trump's","incheon","assange","wales","yorker","bitcoin","kyrie","china"}
         only_nnp_in_context = {"financial","national","code","league","federal","trust","bank","east","west",
                 "north","south","park","middle","club","military","department","board","father","mother","street","red",
-                "international","house", "star","army","truth","wall","minister","box","assoication","sun","gun","fit",
-                "master","gay","united","professor","democratic","series", "house","white","god"}
+                "international","house", "star","army","truth","wall","minister","box","association","sun","gun","fit",
+                "master","gay","united","professor","democratic","series", "house","white","god","god's","lighten","gulf",
+                "tokens"}
                 #"God" might offend people? idk man
+        if word in only_nnp_in_context:
+                 #checked until 4.9 and thought of a few others while testing the sm pipeline
+                return word
+        if word in names_to_capitalize:
+            #both the sm and tf pipelines mess up on some of these
+            return word[0].upper()+word[1:]
         if not self.nlp_pipeline:
             #for lang_tool method
             if word == "i": #not caught
                 return "I"
-            if word in names_to_capitalize:
-                return word[0].upper()+word[1:]
             if "'" in word:
                 return self.handle_apostrophe_cases(word)
         else:
-            if word in only_nnp_in_context:
-                 #checked until 4.9 and thought of a few others while testing the sm pipeline
-                return word
-            if word in names_to_capitalize:
-                #both the sm and tf pipelines mess up on some of these
-                return word[0].upper()+word[1:]
             if tag == "PRP":
                 apos_split = word.split("'")
                 if apos_split[0] == 'i':
@@ -236,7 +236,10 @@ class lang_spec:
         "oct","nov","dec","fuckin","il","nazi","yea","huh","cock","ugh","nasa","fifa","mps","ba","sri",
         "prof","ios","bmw","l.a","opt","gosh","hon","cuz","ahh","ot","dong","bf","soo","og","tis","pres",
         "duh","shes","hes","youre","im","ive","youve","id","youd","hed","weve","dnc","umm","um","tor","eps",
-        "sup","p.s","dt","sgt","phi","org","mmm","dat","ptsd","casa","yrs","cps","ooh"}
+        "sup","p.s","dt","sgt","phi","org","mmm","dat","ptsd","casa","yrs","cps","ooh","heck","crap","linkedin",
+        "hell","junkie","memorise","programme", "lmfao","didnt","pics","isnt","cutie","meme","ain't","stoned",
+        "auto","esque","thru","whats","gonna","thats","haha","asap","dhabi","doesnt","centre","mins","yeah",
+        "copulation", "sex", "didnt","wouldnt","programmes","maximise","dude"}
         #figure out how to get it to use a file in the same folder 
         self.nonwords_from_txt(os.path.join(self.__location__, 'exclude_en.txt'))
         
@@ -319,6 +322,28 @@ class lang_spec:
             abr = str(abr).lower().translate(str.maketrans('', '', string.punctuation))
             if " " not in abr and abr not in actual_words:
                 self.nonwords_set.add(abr)
+
+    def delete_nonwords_after(self,nonwords):
+        self.nonwords_set|=set([nonword.lower() for nonword in nonwords])
+        for freq,word_list in self.freq_bins.items():
+            new_word_list = [word for word in word_list if word not in nonwords]
+            self.freq_bins[freq] = new_word_list
+
+    def switch_word_cap(self,words_to_switch):
+        switched_words = [word[0].upper()+word[1:] if word[0].islower() else word[0].lower()+word[1:] for word in words_to_switch]
+        for freq,word_list in self.freq_bins.items():
+            ind = 0
+            new_word_list = word_list[:]
+            for word in word_list:
+                if word in words_to_switch:
+                    word_ind = words_to_switch.index(word)
+                    new_word_list = new_word_list[:ind] + [switched_words[word_ind]] + new_word_list[ind+1:]
+                ind+=1
+            self.freq_bins[freq] = new_word_list
+
+            
+
+
 
             
 
