@@ -3,5 +3,7 @@ The Google Colabatory notebook, [Demo.ipynb](https://github.com/annikaheuser/TMa
 
 The package from which we sourced the large lanaguage model, [mlm-scoring](https://github.com/awslabs/mlm-scoring), requires CUDA, which Google Colab has pre-installed. Therefore, anyone, no matter their hardware, can run that notebook on Google Colab. Special thanks to Kyle Vedder for help in setting up the notebook environment to be compatible with the mlm-scoring package. 
 
+If the imports from the .py files fail, we recommend restarting the runtime first. If it continues to fail in the same way, consider using [CodeIncludedDemo.ipynb](https://github.com/annikaheuser/TMaze/blob/main/CodeIncludedDemo.ipynb) instead.
+
 Collaborations to improve this codebase (and therefore also pull requests) are welcome, as are inquiries about adjusting TMaze to your experiment. 
 
